@@ -14,6 +14,10 @@ export type StepStat = {
   last: number
   /** Timestamp when this step should be reviewed again. */
   due: number
+  /** The move the learner played instead, most recently. */
+  miss?: string
+  /** How many times in a row that same wrong move came up. */
+  misses?: number
 }
 
 export type Progress = {
@@ -51,7 +55,8 @@ export function sanitizeProgress(value: unknown): Progress {
     if (!raw || typeof raw !== 'object') continue
     const steps: Record<string, StepStat> = {}
     for (const [ply, stat] of Object.entries(raw as Record<string, unknown>)) {
-      if (!/^\d{1,2}$/.test(ply)) continue
+      // Main-line steps are numbers; a sideline answer is "4r1" for reply 1.
+      if (!/^\d{1,2}(?:r[0-2])?$/.test(ply)) continue
       if (!stat || typeof stat !== 'object') continue
       const entry = stat as Record<string, unknown>
       steps[ply] = {
@@ -59,6 +64,14 @@ export function sanitizeProgress(value: unknown): Progress {
         ok: Math.min(finite(entry.ok), REVIEW_DAYS.length - 1),
         last: finite(entry.last),
         due: finite(entry.due),
+      }
+      const miss =
+        typeof entry.miss === 'string' && /^[A-Za-z0-9=+#-]{1,8}$/.test(entry.miss)
+          ? entry.miss
+          : undefined
+      if (miss) {
+        steps[ply].miss = miss
+        steps[ply].misses = Math.min(finite(entry.misses, 1), 999)
       }
       if (Object.keys(steps).length >= MAX_STEPS) break
     }
@@ -76,26 +89,42 @@ export function mergeProgress(a: Progress, b: Progress): Progress {
     const merged: Record<string, StepStat> = { ...existing }
     for (const [ply, stat] of Object.entries(incoming)) {
       const current = merged[ply]
-      merged[ply] = current
-        ? {
-            tries: Math.max(current.tries, stat.tries),
-            ok: Math.max(current.ok, stat.ok),
-            last: Math.max(current.last, stat.last),
-            due: stat.last >= current.last ? stat.due : current.due,
-          }
-        : stat
+      if (!current) {
+        merged[ply] = stat
+        continue
+      }
+      // The newer attempt owns the mistake history, so a wrong move noted on
+      // one device is not blended with an older one from another.
+      const newer = stat.last >= current.last ? stat : current
+      const mergedStep: StepStat = {
+        tries: Math.max(current.tries, stat.tries),
+        ok: Math.max(current.ok, stat.ok),
+        last: Math.max(current.last, stat.last),
+        due: stat.last >= current.last ? stat.due : current.due,
+      }
+      if (newer.miss) {
+        mergedStep.miss = newer.miss
+        mergedStep.misses = newer.misses ?? 1
+      }
+      merged[ply] = mergedStep
     }
     steps[openingId] = merged
   }
   return { steps, updated: Math.max(a.updated, b.updated) }
 }
 
+/** Storage key for a main-line step or one of its sideline answers. */
+export function statKey(ply: number, reply?: number) {
+  return reply === undefined ? String(ply) : `${ply}r${reply}`
+}
+
 export function stepStat(
   progress: Progress,
   openingId: string,
   ply: number,
+  reply?: number,
 ): StepStat | undefined {
-  return progress.steps[openingId]?.[String(ply)]
+  return progress.steps[openingId]?.[statKey(ply, reply)]
 }
 
 /** Record one answer. `firstTry` is false when a hint or a miss came first. */
@@ -105,8 +134,10 @@ export function recordAttempt(
   ply: number,
   firstTry: boolean,
   now: number,
+  options: { miss?: string | null; reply?: number } = {},
 ): Progress {
-  const previous = stepStat(progress, openingId, ply)
+  const key = statKey(ply, options.reply)
+  const previous = progress.steps[openingId]?.[key]
   const ok = firstTry
     ? Math.min((previous?.ok ?? 0) + 1, REVIEW_DAYS.length - 1)
     : Math.max(0, (previous?.ok ?? 0) - 1)
@@ -116,23 +147,44 @@ export function recordAttempt(
     last: now,
     due: now + (firstTry ? REVIEW_DAYS[ok] * DAY : SOON),
   }
+  if (previous?.miss) {
+    stat.miss = previous.miss
+    stat.misses = previous.misses ?? 1
+  }
+  if (!firstTry && options.miss) {
+    stat.misses = stat.miss === options.miss ? (stat.misses ?? 0) + 1 : 1
+    stat.miss = options.miss
+  }
   return {
     steps: {
       ...progress.steps,
-      [openingId]: { ...(progress.steps[openingId] ?? {}), [String(ply)]: stat },
+      [openingId]: { ...(progress.steps[openingId] ?? {}), [key]: stat },
     },
     updated: now,
   }
 }
 
-export type DueStep = { openingId: string; ply: number; due: number }
+export type DueStep = {
+  openingId: string
+  ply: number
+  /** Set for a sideline answer: the index of the reply it answers. */
+  reply?: number
+  due: number
+}
 
 /** Steps whose review time has come, soonest first. */
 export function dueSteps(progress: Progress, now: number): DueStep[] {
   const due: DueStep[] = []
   for (const [openingId, steps] of Object.entries(progress.steps)) {
-    for (const [ply, stat] of Object.entries(steps)) {
-      if (stat.due > 0 && stat.due <= now) due.push({ openingId, ply: +ply, due: stat.due })
+    for (const [key, stat] of Object.entries(steps)) {
+      if (!(stat.due > 0 && stat.due <= now)) continue
+      const [ply, reply] = key.split('r')
+      due.push({
+        openingId,
+        ply: Number(ply),
+        ...(reply === undefined ? {} : { reply: Number(reply) }),
+        due: stat.due,
+      })
     }
   }
   return due.sort((a, b) => a.due - b.due)

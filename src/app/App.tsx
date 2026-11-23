@@ -149,6 +149,7 @@ export function App() {
   const [control, setControl] = useState(2)
   const [color, setColor] = useState<'w' | 'b' | 'random'>('random')
   const [flipped, setFlipped] = useState(false)
+  const [sidelines, setSidelines] = useState(true)
   const [sound, setSound] = useState(true)
   const [theme, setTheme] = useState(0)
   const [review, setReview] = useState<number | null>(null)
@@ -192,9 +193,20 @@ export function App() {
       ply: 0,
       inBook: practice.moves.length === 0,
       expectedSan: lessonOpening.moves[0] ?? null,
+      step: 0,
       leftAt: practice.moves.length ? 0 : null,
+      sideline: null,
+      replies: [],
+      complete: false,
     }
   }, [practice?.pgn, practice?.status, lessonId, lessonOpening])
+  /** A finished online game can name the lesson it followed and where it left. */
+  const report = useMemo(() => {
+    if (!game || practice || game.status !== 'finished' || game.moves.length < 6)
+      return null
+    const match = identifyOpening(game.pgn, game.seat ?? undefined, null)
+    return match && match.ply >= 2 ? match : null
+  }, [game, practice])
   const visible = useMemo(() => {
     const chess = new Chess()
     if (current?.pgn) chess.loadPgn(current.pgn)
@@ -354,10 +366,26 @@ export function App() {
     // While the game is inside a lesson, the house plays the book: the line
     // stays on the rails until the learner leaves it.
     let book: { from: string; to: string; promotion?: string } | null = null
-    if (coach?.inBook && coach.expectedSan) {
+    const options = (coach?.replies ?? [])
+      .map((reply) => reply.san)
+      .filter((move) => move !== coach?.expectedSan)
+    // Every other house turn, try a recorded sideline instead of the main move
+    // so the learner meets the variation the lesson describes.
+    const sidelineTurn =
+      sidelines &&
+      options.length > 0 &&
+      snapshot.moves.length >= 4 &&
+      Math.floor(snapshot.moves.length / 2) % 2 === 0
+    const san =
+      coach?.inBook && coach.expectedSan
+        ? sidelineTurn
+          ? options[Math.floor(snapshot.moves.length / 2) % options.length]
+          : coach.expectedSan
+        : null
+    if (san) {
       const replay = chessFor(snapshot)
       try {
-        const move = replay.move(coach.expectedSan)
+        const move = replay.move(san)
         book = { from: move.from, to: move.to, promotion: move.promotion }
       } catch {
         book = null
@@ -393,6 +421,8 @@ export function App() {
     turn,
     coach?.inBook,
     coach?.expectedSan,
+    coach?.replies,
+    sidelines,
   ])
   useEffect(() => {
     if (!current?.moves.length || !sound) return
@@ -992,22 +1022,50 @@ export function App() {
                         </div>
                         {coach.inBook ? (
                           <>
-                            <p>{coach.opening.goal}</p>
+                            <p>
+                              {coach.sideline
+                                ? coach.sideline.reply.note
+                                : coach.opening.goal}
+                            </p>
                             {coach.expectedSan && (
                               <p className="coach-next">
-                                Book move: <strong>{coach.expectedSan}</strong>{' '}
-                                {coach.opening.steps[coach.ply]?.title}
+                                {coach.sideline ? 'Answer' : 'Book move'}:{' '}
+                                <strong>{coach.expectedSan}</strong>{' '}
+                                {coach.sideline
+                                  ? `to ${coach.sideline.reply.san}`
+                                  : coach.step !== null
+                                    ? coach.opening.steps[coach.step]?.title
+                                    : ''}
                               </p>
                             )}
                           </>
+                        ) : coach.complete ? (
+                          <p>
+                            {coach.sideline
+                              ? `You answered ${coach.sideline.reply.san} with ${coach.sideline.reply.answer} — sideline covered.`
+                              : 'You played the line to the end.'}{' '}
+                            {coach.opening.nextPlan}
+                          </p>
                         ) : (
                           <p>
                             You left the book at move{' '}
-                            {Math.ceil((coach.leftAt ?? 0) / 2)}. The line was{' '}
-                            <strong>{coach.expectedSan}</strong>.{' '}
+                            {Math.floor((coach.leftAt ?? 0) / 2) + 1}.{' '}
+                            {coach.expectedSan && (
+                              <>
+                                The line was <strong>{coach.expectedSan}</strong>.{' '}
+                              </>
+                            )}
                             {coach.opening.nextPlan}
                           </p>
                         )}
+                        <button
+                          className="text-button"
+                          aria-pressed={sidelines}
+                          title="Let the house try the variations this lesson describes"
+                          onClick={() => setSidelines((value) => !value)}
+                        >
+                          {sidelines ? 'Sidelines: on' : 'Sidelines: off'}
+                        </button>
                         <button
                           className="text-button"
                           onClick={() => {
@@ -1024,22 +1082,89 @@ export function App() {
                       </div>
                     )}
                     {current.status === 'finished' && (
-                      <div className="result-card">
-                        <Trophy size={25} strokeWidth={1.5} />
-                        <h3>
-                          {current.result === '½-½'
-                            ? 'A well-played draw.'
-                            : `${current.result === '1-0' ? 'White' : 'Black'} wins.`}
-                        </h3>
-                        <span>{current.reason}</span>
-                        <strong>{current.result}</strong>
-                        <button
-                          className="primary"
-                          onClick={() => (practice ? startPractice() : home())}
-                        >
-                          Play again <RotateCcw size={16} />
-                        </button>
-                      </div>
+                      <>
+                        <div className="result-card">
+                          <Trophy size={25} strokeWidth={1.5} />
+                          <h3>
+                            {current.result === '½-½'
+                              ? 'A well-played draw.'
+                              : `${current.result === '1-0' ? 'White' : 'Black'} wins.`}
+                          </h3>
+                          <span>{current.reason}</span>
+                          <strong>{current.result}</strong>
+                          <button
+                            className="primary"
+                            onClick={() => (practice ? startPractice() : home())}
+                          >
+                            Play again <RotateCcw size={16} />
+                          </button>
+                        </div>
+                        {!practice && report && (
+                          <div className="book-report">
+                            <span className="eyebrow">Book report</span>
+                            <div className="coach-title">
+                              <strong>{report.opening.name}</strong>
+                              <span className="eco-badge">
+                                {report.opening.eco}
+                              </span>
+                            </div>
+                            {report.inBook ? (
+                              <p>
+                                You stayed in the book for {report.ply}{' '}
+                                plies. Next time:{' '}
+                                <strong>{report.expectedSan}</strong>{' '}
+                                {report.step !== null
+                                  ? report.opening.steps[report.step]?.title
+                                  : ''}
+                              </p>
+                            ) : report.complete ? (
+                              <p>
+                                You followed the lesson’s line to the end.{' '}
+                                {report.opening.nextPlan}
+                              </p>
+                            ) : (
+                              <p>
+                                You followed it for {report.ply} plies, then
+                                left at move{' '}
+                                {Math.floor((report.leftAt ?? 0) / 2) + 1}.{' '}
+                                {report.expectedSan && (
+                                  <>
+                                    The line was{' '}
+                                    <strong>{report.expectedSan}</strong>.{' '}
+                                  </>
+                                )}
+                                {report.opening.nextPlan}
+                              </p>
+                            )}
+                            <div className="book-report-actions">
+                              <button
+                                className="text-button"
+                                onClick={() => {
+                                  setLessonTarget({
+                                    id: report.opening.id,
+                                    ply: report.ply,
+                                    nonce: Date.now(),
+                                  })
+                                  setPanel('openings')
+                                }}
+                              >
+                                Open the lesson <ArrowRight size={13} />
+                              </button>
+                              <button
+                                className="text-button"
+                                onClick={() =>
+                                  startPractice(
+                                    report.opening.side,
+                                    report.opening.id,
+                                  )
+                                }
+                              >
+                                Practise this line <ArrowRight size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                     {current.status === 'cancelled' ? (
                       <div className="empty-history">

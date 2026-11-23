@@ -4,6 +4,7 @@ import {
   positionAfter,
   positionKey,
   type Opening,
+  type OpeningReply,
   type Side,
 } from './index'
 
@@ -90,21 +91,158 @@ export function searchPosition(input: string, side?: Side): PositionSearch {
   }
 }
 
+/**
+ * One node in a lesson's book. Children are keyed by the FEN prefix they lead
+ * to, not by the move, so a game that reaches the same position by another
+ * move order still follows the lesson.
+ */
+export type BookNode = {
+  opening: Opening
+  fen: string
+  /** Main-line plies played to reach this node. */
+  ply: number
+  /** The move the lesson plays from here, if any. */
+  expected: string | null
+  /** Index of the step that plays `expected`. */
+  step: number | null
+  /** What the opponent may try instead of the main-line move. */
+  replies: OpeningReply[]
+  /** Set when the node only exists because the opponent chose a sideline. */
+  sideline: { reply: OpeningReply; step: number } | null
+  children: Map<string, BookNode>
+}
+
+export type LessonBook = {
+  opening: Opening
+  root: BookNode
+  /** Every position of this lesson, main line and sidelines. */
+  byKey: Map<string, BookNode[]>
+}
+
+let books: LessonBook[] | null = null
+
+function buildBook(opening: Opening): LessonBook {
+  const byKey = new Map<string, BookNode[]>()
+  const make = (
+    fen: string,
+    ply: number,
+    expected: string | null,
+    step: number | null,
+    replies: OpeningReply[],
+    sideline: { reply: OpeningReply; step: number } | null = null,
+  ): BookNode => {
+    const node: BookNode = {
+      opening,
+      fen,
+      ply,
+      expected,
+      step,
+      replies,
+      sideline,
+      children: new Map(),
+    }
+    const list = byKey.get(positionKey(fen))
+    if (list) list.push(node)
+    else byKey.set(positionKey(fen), [node])
+    return node
+  }
+
+  const root = make(
+    new Chess().fen(),
+    0,
+    opening.moves[0] ?? null,
+    opening.moves.length ? 0 : null,
+    [],
+  )
+  const nodes: BookNode[] = [root]
+  const chess = new Chess()
+  for (let i = 0; i < opening.moves.length; i++) {
+    chess.move(opening.moves[i])
+    const node = make(
+      chess.fen(),
+      i + 1,
+      opening.moves[i + 1] ?? null,
+      i + 1 < opening.moves.length ? i + 1 : null,
+      opening.steps[i]?.replies ?? [],
+    )
+    nodes.push(node)
+    nodes[i].children.set(positionKey(node.fen), node)
+  }
+
+  // A sideline leaves the main line for one reply and answer. When the answer
+  // reaches a main-line position again, the node is shared so coaching resumes.
+  for (const node of nodes) {
+    if (!node.replies.length) continue
+    for (const reply of node.replies) {
+      const board = new Chess(node.fen)
+      try {
+        board.move(reply.san)
+      } catch {
+        continue
+      }
+      const replyKey = positionKey(board.fen())
+      if (node.children.has(replyKey)) continue
+      const sideNode = make(board.fen(), node.ply, reply.answer, null, [], {
+        reply,
+        step: Math.max(0, node.ply - 1),
+      })
+      node.children.set(replyKey, sideNode)
+      try {
+        board.move(reply.answer)
+      } catch {
+        continue
+      }
+      const answerKey = positionKey(board.fen())
+      const rejoin =
+        byKey.get(answerKey)?.find((candidate) => !candidate.sideline) ?? null
+      const tail =
+        rejoin ??
+        make(board.fen(), node.ply, null, null, [], {
+          reply,
+          step: Math.max(0, node.ply - 1),
+        })
+      sideNode.children.set(answerKey, tail)
+    }
+  }
+
+  return { opening, root, byKey }
+}
+
+/** The lesson trees, built once. */
+export function lessonBooks(): LessonBook[] {
+  books ??= OPENINGS.map(buildBook)
+  return books
+}
+
+const deepest = (nodes: BookNode[]) =>
+  nodes.reduce((best, node) => (node.ply > best.ply ? node : best), nodes[0])
+
 export type BookMatch = {
   opening: Opening
-  /** Plies that follow the lesson before the game diverges (or all of them). */
+  /** Plies of the lesson's main line followed, including sideline detours. */
   ply: number
+  /** The lesson's next move is still known from this position. */
   inBook: boolean
-  /** The lesson's move from here, when there is one. */
+  /** The move the lesson plays from here, when there is one. */
   expectedSan: string | null
-  /** The ply where the game left the lesson, when it did. */
+  /** Index of the step that plays `expectedSan`. */
+  step: number | null
+  /** The game left the lesson here, in game plies. */
   leftAt: number | null
+  /** Set while the game is answering a recorded sideline. */
+  sideline: { reply: OpeningReply; step: number } | null
+  /** Sidelines the opponent could try from this position. */
+  replies: OpeningReply[]
+  /** The line (or a sideline) is complete and play continues freely. */
+  complete: boolean
 }
 
 /**
- * Follow a game through the lessons and report the deepest line it matches.
- * `side` prefers lessons for the learner's colour when several lines share a
- * prefix (every 1.e4 lesson matches a game that opens 1.e4).
+ * Follow a game through the lessons and report the most relevant line.
+ *
+ * The walk is by position, so move-order transpositions count; when the game
+ * steps off the book it reports the deepest position it did reach. `side`
+ * prefers lessons for the learner's colour and `preferId` the lesson they chose.
  */
 export function identifyOpening(
   pgn: string,
@@ -122,33 +260,62 @@ export function identifyOpening(
   const played = chess.history()
   if (!played.length) return null
 
+  const keys: string[] = []
+  const replay = new Chess()
+  for (const san of played) {
+    replay.move(san)
+    keys.push(positionKey(replay.fen()))
+  }
+
   let best: (BookMatch & { score: number }) | null = null
-  for (const opening of OPENINGS) {
-    let ply = 0
-    while (
-      ply < played.length &&
-      ply < opening.moves.length &&
-      played[ply] === opening.moves[ply]
-    )
-      ply++
-    if (ply === 0) continue
-    const inBook = ply === played.length
-    const expectedSan = opening.moves[ply] ?? null
-    if (!inBook && !expectedSan) continue
-    const score =
-      ply * 100 +
-      (inBook ? 50 : 0) +
-      (side && opening.side === side ? 20 : 0) +
-      (preferId && opening.id === preferId ? 40 : 0)
-    if (!best || score > best.score)
-      best = {
-        opening,
-        ply,
-        inBook,
-        expectedSan,
-        leftAt: inBook ? null : ply,
-        score,
+  for (const book of lessonBooks()) {
+    let nodes: BookNode[] = [book.root]
+    let last = book.root
+    let followed = 0
+    for (const [index, key] of keys.entries()) {
+      const next: BookNode[] = []
+      for (const node of nodes) {
+        const child = node.children.get(key)
+        if (child) next.push(child)
       }
+      // A transposition can rejoin a lesson after a move order the tree does
+      // not predict, so fall back to any position of this lesson. Keep scanning
+      // after a gap: a line can transpose into the book several moves later.
+      const branch = next.length ? next : book.byKey.get(key) ?? []
+      if (!branch.length) {
+        nodes = []
+        continue
+      }
+      nodes = branch
+      followed = index + 1
+      for (const node of nodes) if (node.ply >= last.ply) last = node
+    }
+    if (!followed) continue
+
+    const finalNode = nodes.length ? deepest(nodes) : null
+    const complete = finalNode
+      ? finalNode.expected === null
+      : last.expected === null
+    const inBook = !!finalNode?.expected
+    const score =
+      followed * 1000 +
+      (finalNode?.ply ?? last.ply) * 10 +
+      (inBook ? 60 : 0) +
+      (side && book.opening.side === side ? 20 : 0) +
+      (preferId && book.opening.id === preferId ? 200 : 0)
+    if (best && score <= best.score) continue
+    best = {
+      opening: book.opening,
+      ply: finalNode?.ply ?? last.ply,
+      inBook,
+      expectedSan: (finalNode ?? last).expected,
+      step: (finalNode ?? last).step,
+      leftAt: inBook || complete ? null : followed,
+      sideline: (finalNode ?? last).sideline,
+      replies: finalNode?.replies ?? [],
+      complete,
+      score,
+    }
   }
   if (!best) return null
   const { score: _score, ...match } = best

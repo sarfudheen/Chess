@@ -105,8 +105,19 @@ export function useLessonProgress() {
   )
 
   const record = useCallback(
-    (openingId: string, ply: number, firstTry: boolean) => {
-      commit(recordAttempt(latest.current, openingId, ply, firstTry, Date.now()))
+    (
+      openingId: string,
+      ply: number,
+      firstTry: boolean,
+      miss?: string | null,
+      reply?: number,
+    ) => {
+      commit(
+        recordAttempt(latest.current, openingId, ply, firstTry, Date.now(), {
+          miss,
+          reply,
+        }),
+      )
       queued.current = latest.current
       if (timer.current) window.clearTimeout(timer.current)
       timer.current = window.setTimeout(flush, 1500)

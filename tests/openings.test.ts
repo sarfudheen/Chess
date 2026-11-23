@@ -130,6 +130,46 @@ describe('opening lessons', () => {
     expect(identifyOpening(chessAfter(['a4']).pgn(), 'w')).toBeNull()
   })
 
+  test('the coach follows a line reached by another move order', () => {
+    // Modern move order reaching the Pirc main line after eight plies. A
+    // prefix match used to drop the coach at move two; positions do not.
+    const game = chessAfter(['e4', 'g6', 'd4', 'Bg7', 'Nc3', 'd6', 'Nf3', 'Nf6'])
+    const match = identifyOpening(game.pgn(), 'w', 'pirc')
+    expect(match?.opening.id).toBe('pirc')
+    expect(match?.inBook).toBe(true)
+    expect(match?.ply).toBe(8)
+    expect(match?.expectedSan).toBe('Be2')
+  })
+
+  test('the coach offers sidelines and answers the one the house plays', () => {
+    const line = ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4']
+    const base = identifyOpening(chessAfter(line).pgn(), 'w', 'italian')
+    expect(base?.replies.map((reply) => reply.san)).toContain('Nf6')
+
+    // The Two Knights instead of 3...Bc5: the lesson answers 4.d3.
+    const sideline = identifyOpening(
+      chessAfter([...line, 'Nf6']).pgn(),
+      'w',
+      'italian',
+    )
+    expect(sideline?.opening.id).toBe('italian')
+    expect(sideline?.inBook).toBe(true)
+    expect(sideline?.sideline?.reply.san).toBe('Nf6')
+    expect(sideline?.expectedSan).toBe('d3')
+
+    // That sideline leaves the main line, so the coach reports completion
+    // instead of pretending the learner made a mistake.
+    const covered = identifyOpening(
+      chessAfter([...line, 'Nf6', 'd3']).pgn(),
+      'w',
+      'italian',
+    )
+    expect(covered?.complete).toBe(true)
+    expect(covered?.inBook).toBe(false)
+    expect(covered?.leftAt).toBeNull()
+    expect(covered?.expectedSan).toBeNull()
+  })
+
   test('every lesson can be found at its own final position', () => {
     for (const opening of OPENINGS) {
       const last = chessAfter(opening.moves)
@@ -168,6 +208,51 @@ describe('spaced review progress', () => {
     expect(merged.steps.scotch['4'].last).toBe(now + 50_000)
     expect(merged.steps.scotch['6'].ok).toBe(2)
     expect(merged.updated).toBe(now + 50_000)
+  })
+
+  test('sideline answers and repeated wrong moves are stored', () => {
+    const now = 1_700_000_000_000
+    let store = recordAttempt(emptyProgress(), 'italian', 6, false, now, {
+      miss: 'Bg5',
+      reply: 0,
+    })
+    expect(store.steps.italian['6r0'].miss).toBe('Bg5')
+    expect(store.steps.italian['6r0'].misses).toBe(1)
+
+    store = recordAttempt(store, 'italian', 6, false, now + 1000, {
+      miss: 'Bg5',
+      reply: 0,
+    })
+    expect(store.steps.italian['6r0'].misses).toBe(2)
+
+    store = recordAttempt(store, 'italian', 6, false, now + 2000, {
+      miss: 'd4',
+      reply: 0,
+    })
+    expect(store.steps.italian['6r0'].miss).toBe('d4')
+    expect(store.steps.italian['6r0'].misses).toBe(1)
+
+    const due = dueSteps(store, now + 10 * 60000 + 2000)
+    expect(due).toEqual([
+      { openingId: 'italian', ply: 6, reply: 0, due: now + 2000 + 10 * 60000 },
+    ])
+
+    const clean = sanitizeProgress(JSON.parse(JSON.stringify(store)))
+    expect(clean.steps.italian['6r0'].miss).toBe('d4')
+    expect(clean.steps.italian['6r0'].misses).toBe(1)
+  })
+
+  test('merging keeps the newer wrong move for the same step', () => {
+    const now = 1_700_000_000_000
+    const phone = recordAttempt(emptyProgress(), 'scotch', 4, false, now, {
+      miss: 'a3',
+    })
+    const laptop = recordAttempt(emptyProgress(), 'scotch', 4, false, now + 1000, {
+      miss: 'h3',
+    })
+    const merged = mergeProgress(phone, laptop)
+    expect(merged.steps.scotch['4'].miss).toBe('h3')
+    expect(merged.steps.scotch['4'].tries).toBe(1)
   })
 
   test('sanitises stored payloads and bounds their size', () => {

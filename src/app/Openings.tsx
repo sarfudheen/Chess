@@ -37,7 +37,7 @@ import {
   type Side,
 } from '../shared/openings'
 import { searchPosition } from '../shared/openings/book'
-import { dueCount, dueSteps } from '../shared/openings/progress'
+import { dueCount, dueSteps, stepStat } from '../shared/openings/progress'
 
 const LEARNED_KEY = 'rook-openings-learned'
 const RESUME_KEY = 'rook-openings-resume'
@@ -214,7 +214,13 @@ const MiniBoard = memo(function MiniBoard({
 
 export type LessonTarget = { id: string; ply: number; nonce: number }
 
-type ReviewItem = { opening: Opening; ply: number }
+type ReviewItem = {
+  opening: Opening
+  ply: number
+  /** Set when the review is a sideline answer rather than a main-line move. */
+  reply?: OpeningReply
+  replyIndex?: number
+}
 
 export function Openings({
   onPlay,
@@ -259,6 +265,8 @@ export function Openings({
   } | null>(null)
   const stepList = useRef<HTMLOListElement>(null)
   const failed = useRef(new Set<number>())
+  const playMiss = useRef<string | null>(null)
+  const sidelineMiss = useRef<string | null>(null)
   const appliedTarget = useRef<number | null>(null)
   const { progress, record } = useLessonProgress()
 
@@ -339,6 +347,8 @@ export function Openings({
     setWrongMoves([])
     setQuiz({ asked: 0, correct: 0 })
     failed.current = new Set()
+    playMiss.current = null
+    sidelineMiss.current = null
     window.scrollTo({ top: 0 })
   }
 
@@ -350,25 +360,43 @@ export function Openings({
     setWrong('')
     setWrongMoves([])
     setSideline(null)
+    playMiss.current = null
+    sidelineMiss.current = null
   }
 
-  function remember(index: number, firstTry: boolean) {
+  function remember(index: number, firstTry: boolean, miss?: string | null) {
     if (!selected || turnOf(index) !== selected.side) return
-    record(selected.id, index, firstTry)
+    record(selected.id, index, firstTry, miss)
+  }
+
+  /** Open one review item: a main-line move, or a sideline the opponent tried. */
+  function showReviewItem(item: ReviewItem) {
+    focusLesson(item.opening, item.ply)
+    setDrill(true)
+    if (item.reply)
+      setSideline({
+        index: item.ply,
+        reply: item.reply,
+        solved: false,
+      })
   }
 
   function startReview() {
     const items = dueSteps(progress, Date.now())
-      .map((item) => ({
-        opening: OPENINGS.find((opening) => opening.id === item.openingId),
-        ply: item.ply,
-      }))
-      .filter((item): item is ReviewItem => !!item.opening)
+      .map((item): ReviewItem | null => {
+        const opening = OPENINGS.find((entry) => entry.id === item.openingId)
+        if (!opening) return null
+        if (item.reply === undefined) return { opening, ply: item.ply }
+        const reply = opening.steps[item.ply]?.replies?.[item.reply]
+        return reply
+          ? { opening, ply: item.ply, reply, replyIndex: item.reply }
+          : null
+      })
+      .filter((item): item is ReviewItem => !!item)
     if (!items.length) return
     setReviewDone(0)
     setReview({ items, index: 0 })
-    focusLesson(items[0].opening, items[0].ply)
-    setDrill(true)
+    showReviewItem(items[0])
   }
 
   function nextReview() {
@@ -377,13 +405,13 @@ export function Openings({
     if (index >= review.items.length) {
       setReview(null)
       setDrill(false)
+      setSideline(null)
       setReviewDone(review.items.length)
       return
     }
     const item = review.items[index]
     setReview({ ...review, index })
-    focusLesson(item.opening, item.ply)
-    setDrill(true)
+    showReviewItem(item)
   }
 
   /** In play-it-yourself mode the opponent answers a step behind, so the line flows. */
@@ -764,6 +792,16 @@ export function Openings({
             ? `${quizStep.san} — ${quizStep.title}`
             : ''
   const dueHere = dueCount(progress, selected.id, now)
+  const quizStat =
+    quizIndex === null ? undefined : stepStat(progress, selected.id, quizIndex)
+  const sidelineReplyIndex = sideline
+    ? (selected.steps[sideline.index]?.replies?.indexOf(sideline.reply) ?? 0)
+    : 0
+  const sidelineStat = sideline
+    ? stepStat(progress, selected.id, sideline.index, sidelineReplyIndex)
+    : undefined
+  const playStat =
+    step < length ? stepStat(progress, selected.id, step) : undefined
   const next = nextLesson(selected.id)
   const turn = sideline
     ? 'Sideline'
@@ -783,6 +821,7 @@ export function Openings({
     setHintLevel(0)
     setWrong('')
     setWrongMoves([])
+    sidelineMiss.current = null
   }
 
   function playMove(from: Square, to: Square, promotion?: string) {
@@ -796,12 +835,24 @@ export function Openings({
         return
       }
       if (!played) return
-      if (played.san === sideline.reply.answer)
+      const replyIndex =
+        selected.steps[sideline.index]?.replies?.indexOf(sideline.reply) ?? 0
+      if (played.san === sideline.reply.answer) {
         setSideline({ ...sideline, solved: true })
-      else
+        setHint('')
+        record(
+          selected.id,
+          sideline.index,
+          !sidelineMiss.current && hintLevel === 0,
+          sidelineMiss.current ?? undefined,
+          replyIndex,
+        )
+      } else {
+        sidelineMiss.current ??= played.san
         setHint(
           `${played.san} is legal, but the lesson answers ${sideline.reply.san} with ${sideline.reply.answer}.`,
         )
+      }
       return
     }
     if (isQuiz) {
@@ -826,11 +877,16 @@ export function Openings({
     }
     if (!played) return
     if (played.san === selected.steps[step].san) {
-      remember(step, hintLevel === 0 && !failed.current.has(step))
+      remember(
+        step,
+        hintLevel === 0 && !failed.current.has(step),
+        playMiss.current,
+      )
       go(step + 1)
       return
     }
     failed.current.add(step)
+    playMiss.current = played.san
     setHint(
       `${played.san} is legal, but this line plays ${selected.steps[step].san} — ${selected.steps[
         step
@@ -847,7 +903,7 @@ export function Openings({
       correct: current.correct + (move === quizStep.san ? 1 : 0),
     }))
     if (move === quizStep.san) {
-      remember(quizIndex, firstTry)
+      remember(quizIndex, firstTry, wrongMoves.at(-1))
       setWrong('')
       setWrongMoves([])
       setHintLevel(0)
@@ -862,7 +918,7 @@ export function Openings({
 
   function revealDrill() {
     if (quizIndex === null) return
-    remember(quizIndex, false)
+    remember(quizIndex, false, wrongMoves.at(-1))
     setWrong('')
     setWrongMoves([])
     setHintLevel(0)
@@ -872,7 +928,7 @@ export function Openings({
 
   function revealPlay() {
     if (step >= length) return
-    remember(step, false)
+    remember(step, false, playMiss.current)
     failed.current.add(step)
     go(step + 1)
   }
@@ -1120,10 +1176,17 @@ export function Openings({
             <div className="sideline-card">
               <span className="eyebrow">If they play it</span>
               <div className="sideline-line">
-                <em>{plyLabel(sideline.index)}</em>
+                <em>{Math.floor(sideline.index / 2) + 1}…</em>
                 <strong>{sideline.reply.san}</strong>
               </div>
               <p>{sideline.reply.note}</p>
+              {sidelineStat?.miss && (sidelineStat.misses ?? 0) >= 2 && (
+                <p className="mistake-note">
+                  You have answered this with{' '}
+                  <strong>{sidelineStat.miss}</strong> {sidelineStat.misses}{' '}
+                  times. The book answer is {sideline.reply.answer}.
+                </p>
+              )}
               {!sidelinePosition ? (
                 <p>That reply is not available from this position.</p>
               ) : sideline.solved ? (
@@ -1142,14 +1205,34 @@ export function Openings({
                 {!sideline.solved && (
                   <button
                     className="text-button"
-                    onClick={() => setSideline({ ...sideline, solved: true })}
+                    onClick={() => {
+                      record(
+                        selected.id,
+                        sideline.index,
+                        false,
+                        sidelineMiss.current ?? undefined,
+                        selected.steps[sideline.index]?.replies?.indexOf(
+                          sideline.reply,
+                        ) ?? 0,
+                      )
+                      setSideline({ ...sideline, solved: true })
+                    }}
                   >
                     Show the answer <ArrowRight size={13} />
                   </button>
                 )}
-                <button className="text-button" onClick={() => setSideline(null)}>
-                  Back to the line
-                </button>
+                {review && sideline.solved ? (
+                  <button className="text-button" onClick={nextReview}>
+                    Next review <ArrowRight size={13} />
+                  </button>
+                ) : (
+                  <button
+                    className="text-button"
+                    onClick={() => setSideline(null)}
+                  >
+                    Back to the line
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1180,6 +1263,13 @@ export function Openings({
                   {hint && (
                     <p className="interactive-hint" role="alert">
                       {hint}
+                    </p>
+                  )}
+                  {playStat?.miss && (playStat.misses ?? 0) >= 2 && (
+                    <p className="mistake-note">
+                      You have played <strong>{playStat.miss}</strong> here{' '}
+                      {playStat.misses} times. The line plays{' '}
+                      {selected.steps[step].san}.
                     </p>
                   )}
                   <div className="hint-ladder">
@@ -1259,6 +1349,12 @@ export function Openings({
               {wrong && (
                 <div className="drill-feedback" role="alert">
                   <strong>{wrongNote(selected, quizIndex!, wrong)}</strong>
+                  {quizStat?.miss && (quizStat.misses ?? 0) >= 2 && (
+                    <p className="mistake-note">
+                      You have played <strong>{quizStat.miss}</strong> here{' '}
+                      {quizStat.misses} times.
+                    </p>
+                  )}
                   <div className="drill-actions">
                     <button
                       className="text-button"
