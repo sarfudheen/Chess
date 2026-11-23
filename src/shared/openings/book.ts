@@ -32,6 +32,24 @@ export function bookIndex(): Map<string, BookEntry[]> {
   return index
 }
 
+/**
+ * What a lesson does from a position on its main line: the next move and the
+ * named opponent replies it already teaches answers to.
+ */
+export type Continuation = {
+  opening: Opening
+  /** Plies already played of the lesson's main line. */
+  ply: number
+  /** The move the lesson plays from here on the main line, if any. */
+  nextSan: string | null
+  /** Why the lesson plays that move, when it is known. */
+  nextWhy: string | null
+  /** Common opponent replies this lesson already explains how to meet. */
+  replies: OpeningReply[]
+  /** Set when this position is only reached after a sideline detour. */
+  viaSideline: { reply: OpeningReply; answeredBy: string } | null
+}
+
 /** Lessons that reach this exact position, one entry per lesson. */
 export function openingsAt(fen: string): BookEntry[] {
   const key = positionKey(fen)
@@ -48,8 +66,48 @@ export function openingsAt(fen: string): BookEntry[] {
   )
 }
 
+/**
+ * For each lesson that reaches a position, the move it plays next and the
+ * opponent replies it already teaches answers to. This is the data behind the
+ * position explorer and the line comparison view.
+ */
+export function continuationsAt(fen: string): Continuation[] {
+  const key = positionKey(fen)
+  const entries = bookIndex().get(key) ?? []
+  const best = new Map<string, BookEntry>()
+  for (const entry of entries) {
+    const seen = best.get(entry.opening.id)
+    if (!seen || entry.ply > seen.ply) best.set(entry.opening.id, entry)
+  }
+  const result: Continuation[] = []
+  for (const entry of best.values()) {
+    const opening = entry.opening
+    const stepIndex = entry.ply
+    const step =
+      stepIndex > 0 && stepIndex <= opening.steps.length
+        ? opening.steps[stepIndex - 1]
+        : null
+    const nextSan = stepIndex < opening.moves.length ? opening.moves[stepIndex] : null
+    const nextWhy = step?.why ?? null
+    const replies = step?.replies ?? []
+    result.push({
+      opening,
+      ply: entry.ply,
+      nextSan,
+      nextWhy,
+      replies,
+      viaSideline: null,
+    })
+  }
+  return result.sort(
+    (a, b) =>
+      Number(b.opening.side === 'w') - Number(a.opening.side === 'w') ||
+      a.opening.name.localeCompare(b.opening.name),
+  )
+}
+
 export type PositionSearch =
-  | { fen: string; plies: number; matches: BookEntry[] }
+  | { fen: string; plies: number; matches: BookEntry[]; continuations: Continuation[] }
   | { error: string }
 
 /**
@@ -84,10 +142,14 @@ export function searchPosition(input: string, side?: Side): PositionSearch {
     }
   }
   const matches = openingsAt(chess.fen())
+  const continuations = side
+    ? continuationsAt(chess.fen()).filter((entry) => entry.opening.side === side)
+    : continuationsAt(chess.fen())
   return {
     fen: chess.fen(),
     plies: chess.history().length,
-    matches: side ? matches.filter((entry) => entry.opening.side === side) : matches,
+    matches,
+    continuations,
   }
 }
 

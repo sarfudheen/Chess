@@ -1875,26 +1875,6 @@ main {
 .wrong-review-actions .primary {
   flex: 1;
 }
-.onboarding-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.onboarding-actions .primary,
-.onboarding-actions .secondary {
-  flex: 1;
-  min-width: 140px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  font-size: 12px;
-}
-.onboarding-actions .primary .piece-art,
-.onboarding-actions .secondary .piece-art {
-  width: 24px;
-  height: 24px;
-}
 .learn-progress {
   min-width: 190px;
   text-align: right;

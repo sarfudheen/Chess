@@ -1018,6 +1018,131 @@ export const OPEN_GAMES: OpeningSource[] = [
     ],
   },
   {
+    id: 'ponziani-declined',
+    name: 'Ponziani: 3...d6',
+    eco: 'C44',
+    side: 'w',
+    family: 'Open games',
+    summary:
+      'When Black declines the Ponziani pawn take with ...d6, you keep the centre and develop with Nf3 and Bc4 instead of bringing the queen out early.',
+    goal: 'Play Nf3, Bc4 and O-O against the Philidor-style setup, keeping the centre alive and the queen at home.',
+    nextPlan: 'Next: Bc4, O-O and c3, with d4 to follow when it is supported.',
+    remember: 'Against ...d6 in the Ponziani: Nf3, Bc4, O-O, then d4 supported by c3.',
+    steps: [
+      {
+        san: 'e4',
+        title: 'Take the centre',
+        why: 'The king pawn opens lines and claims the middle.',
+        replies: [{ san: 'e5', note: 'The Open Game.', answer: 'd4' }],
+      },
+      {
+        san: 'e5',
+        title: 'Black mirrors you',
+        why: 'Black claims the same central space.',
+      },
+      {
+        san: 'd4',
+        title: 'Strike immediately',
+        why: 'You open the centre on move three, grabbing space while Black is still undeveloped.',
+        replies: [
+          { san: 'exd4', note: 'The main line: accept the challenge.', answer: 'Qxd4' },
+          { san: 'd6', note: 'The Philidor-style decline, keeping the centre closed.', answer: 'Nf3' },
+        ],
+      },
+      {
+        san: 'd6',
+        title: 'Black declines the pawn',
+        why: 'Black defends instead of taking, so you do not need the queen out early and can develop in the normal order.',
+      },
+      {
+        san: 'Nf3',
+        title: 'Develop and attack',
+        why: 'The knight hits e5 and frees f1 for the bishop, so castling comes one move sooner.',
+      },
+      {
+        san: 'Nf6',
+        title: 'Develop and hit e4',
+        why: 'The knight attacks e4 and develops at the same time, so both sides are doing two jobs with one move.',
+      },
+      {
+        san: 'Bc4',
+        title: 'Aim at f7',
+        why: 'The bishop points at f7, the square only the king defends, and it empties f1 for castling.',
+      },
+      {
+        san: 'Be7',
+        title: 'Black prepares to castle',
+        why: 'The bishop develops and the king follows, so the position settles for a long fight.',
+      },
+      {
+        san: 'O-O',
+        title: 'Castle into the plan',
+        why: 'Your king is safe and the rook is ready to join the centre.',
+      },
+    ],
+  },
+  {
+    id: 'scotch-gambit-declined',
+    name: 'Scotch Gambit: declined',
+    eco: 'C44',
+    side: 'w',
+    family: 'Open games',
+    summary:
+      'When Black declines the gambit pawn with ...d6 or ...Nf6, you still get the open centre and the fast development without needing the extra pawn.',
+    goal: 'Develop with Bc4 and O-O after d4, keeping the initiative even when the gambit pawn is not taken.',
+    nextPlan: 'Next: Nf3, O-O and Re1, with the open centre and the f7 pressure still in your favour.',
+    remember: 'If the gambit is declined, play Bc4, O-O and Re1: the development is the point, not the pawn.',
+    steps: [
+      {
+        san: 'e4',
+        title: 'Take the centre',
+        why: 'The king pawn opens lines and claims the middle.',
+        replies: [{ san: 'e5', note: 'The Open Game.', answer: 'd4' }],
+      },
+      {
+        san: 'e5',
+        title: 'Black mirrors you',
+        why: 'Black claims the same central space.',
+      },
+      {
+        san: 'd4',
+        title: 'Strike immediately',
+        why: 'You open the centre and offer a pawn to get a faster development.',
+        replies: [{ san: 'exd4', note: 'The accepted gambit, by far the most common.', answer: 'c3' }],
+      },
+      {
+        san: 'd6',
+        title: 'Black declines the gambit',
+        why: 'Black defends instead of taking, so you keep the pawn and still get the open centre.',
+      },
+      {
+        san: 'Nf3',
+        title: 'Develop and defend',
+        why: 'The knight defends e4 and clears g1 for castling, so your development is almost done.',
+      },
+      {
+        san: 'Nc6',
+        title: 'Black develops',
+        why: 'The knight develops and attacks d4, so you must support the centre.',
+      },
+      {
+        san: 'Bc4',
+        title: 'Aim at f7',
+        why: 'The bishop points at f7, the weakest square, and your development is fast.',
+      },
+      {
+        san: 'Be7',
+        title: 'Black prepares to castle',
+        why: 'The bishop develops and frees the king\'s path, so castling is one move away.',
+      },
+      {
+        san: 'O-O',
+        title: 'Castle into the gambit',
+        why: 'Your king is safe and Re1 brings a second attacker to e5.',
+      },
+    ],
+  },
+  {
     id: 'scotch-gambit',
     name: 'Scotch Gambit',
     eco: 'C44',

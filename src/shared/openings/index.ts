@@ -7,6 +7,7 @@ import { INDIAN } from './indian'
 import { FLANK } from './flank'
 
 export type { Opening, OpeningStep, OpeningReply, Side } from './types'
+export { REASONS } from './reasons'
 
 const sources: OpeningSource[] = [
   ...OPEN_GAMES,

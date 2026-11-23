@@ -519,7 +519,7 @@ export function Openings({
       <div className="learn">
         <div className="learn-intro">
           <div>
-            <span className="eyebrow">50 openings, step by step</span>
+            <span className="eyebrow">{OPENINGS.length} openings, step by step</span>
             <h2>Learn the openings properly.</h2>
             <p>
               Every lesson walks the main line move by move: why the move is
@@ -670,10 +670,13 @@ export function Openings({
                       positionResult.plies === 1 ? 'ply' : 'plies'
                     }`
                   : 'That position'}{' '}
-                · {positionResult.matches.length} lesson
-                {positionResult.matches.length === 1 ? '' : 's'} reach it
+                · {positionResult.continuations.length} lesson
+                {positionResult.continuations.length === 1 ? '' : 's'} reach it
+                {positionResult.continuations.length > 1
+                  ? ' — compare what each one plays next'
+                  : ''}
               </p>
-              {positionResult.matches.slice(0, 10).map((entry) => (
+              {positionResult.continuations.slice(0, 12).map((entry) => (
                 <button
                   className="position-result"
                   key={entry.opening.id}
@@ -682,13 +685,24 @@ export function Openings({
                   <strong>{entry.opening.name}</strong>
                   <span>
                     {sideName(entry.opening.side)} · {entry.opening.eco}
+                    {entry.viaSideline ? ' · reached via sideline' : ''}
                   </span>
                   <em>
-                    Next: {entry.opening.moves[entry.ply] ?? 'line complete'}
+                    {entry.nextSan
+                      ? `Next: ${entry.nextSan}`
+                      : 'Line complete'}
+                    {entry.nextWhy && entry.nextSan
+                      ? ` — ${entry.nextWhy}`
+                      : ''}
                   </em>
+                  {entry.replies.length && (
+                    <span className="position-replies">
+                      They may try: {entry.replies.map((r) => r.san).join(', ')}
+                    </span>
+                  )}
                 </button>
               ))}
-              {!positionResult.matches.length && (
+              {!positionResult.continuations.length && (
                 <p>No lesson reaches this position yet.</p>
               )}
               <button className="text-button" onClick={() => setPositionQuery('')}>
