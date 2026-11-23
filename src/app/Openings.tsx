@@ -10,6 +10,7 @@ import {
   Compass,
   Copy,
   Eye,
+  Heart,
   Lightbulb,
   Lock,
   Play,
@@ -40,6 +41,7 @@ import { searchPosition } from '../shared/openings/book'
 import { dueCount, dueSteps, stepStat } from '../shared/openings/progress'
 
 const LEARNED_KEY = 'rook-openings-learned'
+const FAVORITES_KEY = 'rook-openings-favorites'
 const RESUME_KEY = 'rook-openings-resume'
 
 function readLearned(): string[] {
@@ -59,6 +61,26 @@ function saveLearned(ids: string[]) {
     localStorage.setItem(LEARNED_KEY, JSON.stringify(ids))
   } catch {
     /* Learning progress is a convenience; a blocked store is not an error. */
+  }
+}
+
+function readFavorites(): string[] {
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+function saveFavorites(ids: string[]) {
+  try {
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(ids))
+  } catch {
+    /* Favorites are a convenience; a blocked store is not an error. */
   }
 }
 
@@ -242,6 +264,7 @@ export function Openings({
   const [side, setSide] = useState<'all' | 'w' | 'b'>('all')
   const [level, setLevel] = useState<'all' | Level>('all')
   const [learned, setLearned] = useState<string[]>(readLearned)
+  const [favorites, setFavorites] = useState<string[]>(readFavorites)
   const [resume, setResume] = useState<{ id: string; ply: number } | null>(
     readResume,
   )
@@ -257,7 +280,9 @@ export function Openings({
   const [review, setReview] = useState<{ items: ReviewItem[]; index: number } | null>(
     null,
   )
+  const [wrongReview, setWrongReview] = useState<{ opening: Opening; ply: number; miss: string } | null>(null)
   const [reviewDone, setReviewDone] = useState(0)
+  const [dueCompact, setDueCompact] = useState(true)
   const [sideline, setSideline] = useState<{
     index: number
     reply: OpeningReply
@@ -326,6 +351,16 @@ export function Openings({
         ? current.filter((item) => item !== id)
         : [...current, id]
       saveLearned(next)
+      return next
+    })
+  }
+
+  function toggleFavorite(id: string) {
+    setFavorites((current) => {
+      const next = current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id]
+      saveFavorites(next)
       return next
     })
   }
@@ -477,6 +512,8 @@ export function Openings({
     onTargetConsumed?.()
   }, [target, onTargetConsumed])
 
+  const showOnboarding = !learned.length && !favorites.length && due.length === 0
+
   if (!selected)
     return (
       <div className="learn">
@@ -508,6 +545,20 @@ export function Openings({
             )}
           </div>
         </div>
+        {showOnboarding && (
+          <div className="onboarding-card">
+            <h3>Get started</h3>
+            <p>Pick a few openings to focus on. Add them to your favorites so you can find them quickly.</p>
+            <div className="onboarding-actions">
+              <button className="primary" onClick={() => { setSide('w'); setLevel('starter') }}>
+                <Piece type="p" color="w" /> White openings
+              </button>
+              <button className="secondary" onClick={() => { setSide('b'); setLevel('starter') }}>
+                <Piece type="p" color="b" /> Black openings
+              </button>
+            </div>
+          </div>
+        )}
 
         {resume && resume.ply > 0 && (
           <button
@@ -545,6 +596,11 @@ export function Openings({
             <button className="primary" onClick={startReview}>
               <Target size={15} /> Review due
             </button>
+            {due.length > 5 && (
+              <button className="text-button muted" onClick={() => setDueCompact(!dueCompact)}>
+                {dueCompact ? 'Expand view' : 'Compact view'}
+              </button>
+            )}
           </div>
         )}
 
@@ -680,11 +736,14 @@ export function Openings({
                     const dueHere = dueByOpening.get(opening.id) ?? 0
                     return (
                       <button
-                        className={`opening-card side-${opening.side}`}
+                        className={`opening-card side-${opening.side}${favorites.includes(opening.id) ? ' favorited' : ''}`}
                         key={opening.id}
                         onClick={() => open(opening)}
                       >
                         <div className="opening-card-top">
+                          <span className="favorite-toggle" onClick={(e) => { e.stopPropagation(); toggleFavorite(opening.id) }}>
+                            {favorites.includes(opening.id) ? <Heart size={13} /> : <Heart size={13} />}
+                          </span>
                           <span className={`side-badge ${opening.side}`}>
                             <Piece type="p" color={opening.side} />
                             {sideName(opening.side)}
@@ -1128,6 +1187,14 @@ export function Openings({
                 {learned.includes(selected.id) ? <Check size={15} /> : <BookOpen size={15} />}
                 {learned.includes(selected.id) ? 'Learned' : 'Mark learned'}
               </button>
+              <button
+                className="text-button favorite-button"
+                onClick={() => toggleFavorite(selected.id)}
+                title={favorites.includes(selected.id) ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                {favorites.includes(selected.id) ? <Heart size={14} /> : <Heart size={14} />}
+                {favorites.includes(selected.id) ? 'Favorite' : 'Favorite'}
+              </button>
               <button className="text-button play-opening" onClick={() => onPractice(selected.id)}>
                 <Play size={13} /> Play this opening
               </button>
@@ -1169,6 +1236,38 @@ export function Openings({
               >
                 Back to all openings
               </button>
+            </div>
+          )}
+
+          {wrongReview && (
+            <div className="wrong-review-card">
+              <span className="eyebrow">Reviewing a mistake</span>
+              <p>
+                You played <strong>{wrongReview.miss}</strong> here instead of the book move.
+              </p>
+              <div className="wrong-review-actions">
+                <button
+                  className="text-button"
+                  onClick={() => {
+                    setWrongReview(null)
+                    setDrill(false)
+                  }}
+                >
+                  Skip
+                </button>
+                <button
+                  className="primary"
+                  onClick={() => {
+                    const opening = wrongReview.opening
+                    const ply = wrongReview.ply
+                    setWrongReview(null)
+                    focusLesson(opening, ply)
+                    setDrill(true)
+                  }}
+                >
+                  Try again
+                </button>
+              </div>
             </div>
           )}
 

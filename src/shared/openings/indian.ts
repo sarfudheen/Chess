@@ -100,6 +100,72 @@ export const INDIAN: OpeningSource[] = [
     ],
   },
   {
+    id: 'london-as-black',
+    name: 'London System: Black',
+    eco: 'D02',
+    side: 'b',
+    family: 'Closed games',
+    summary:
+      'How to fight the London: challenge the bishop early and build the centre behind the d5 pawn.',
+    goal: 'Hit Bf4 with ...Nh5 or ...Bd6, challenge e3 and play for ...c5 and ...dxc4.',
+    nextPlan: 'Next: ...c5, ...Bb4 or ...Bd6, taking away the bishop before it gets to d6.',
+    remember: 'Against London: ...Nh5 or ...Bd6 to trade the bishop, then ...c5 and ...O-O.',
+    watch:
+      'If you miss the ...Bd6 or ...Nh5 trade, White gets a strong bishop and a big centre.',
+    steps: [
+      {
+        san: 'd4',
+        title: 'White opens',
+        why: 'The queen pawn claims the centre and frees the c1 bishop.',
+      },
+      {
+        san: 'Nf6',
+        title: 'Pressure e4, keep options',
+        why: 'The knight controls e4 and leaves ...d5, ...e6 and ...g6 available.',
+      },
+      {
+        san: 'Bf4',
+        title: 'The London',
+        why: 'The bishop takes the diagonal before ...e6, the whole trademark of the opening.',
+      },
+      {
+        san: 'e6',
+        title: 'Open the bishop',
+        why: 'The pawn frees the f8 bishop and supports d5.',
+      },
+      {
+        san: 'e3',
+        title: 'White builds',
+        why: 'The bishop develops and the pawn supports d4.',
+      },
+      {
+        san: 'Bd6',
+        title: 'Trade the London bishop',
+        why: 'The bishop has the same diagonal and pins the London bishop, which is your main target.',
+      },
+      {
+        san: 'c3',
+        title: 'White supports d4',
+        why: 'The pawn holds the centre and prepares Nbd2 and Bd3.',
+      },
+      {
+        san: 'O-O',
+        title: 'Castle',
+        why: 'The king is safe before the centre opens.',
+      },
+      {
+        san: 'Nd2',
+        title: 'White develops',
+        why: 'The knight supports e4 and prepares Bd3 and O-O, with c4 to follow.',
+      },
+      {
+        san: 'Nc6',
+        title: 'Support e5 and d4',
+        why: 'The knight defends e5 and attacks d4 and c3, the standard Black ideas.',
+      },
+    ],
+  },
+  {
     id: 'nimzo',
     name: 'Nimzo-Indian Defence',
     eco: 'E20',

@@ -968,6 +968,9 @@ main {
   padding: 6px 10px;
   font-weight: 500;
   min-height: 27px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .move-row button:hover {
   background: #e3e9d8;
@@ -975,6 +978,22 @@ main {
 .move-row .current-move {
   color: #4a6540;
   background: #e4ecd8;
+}
+.move-san {
+  flex: 1;
+}
+.move-side {
+  font-size: 9px;
+  font-weight: 600;
+  color: #a1a88e;
+  min-width: 14px;
+  text-align: center;
+}
+.move-side.w {
+  color: #748d63;
+}
+.move-side.b {
+  color: #8b6f5c;
 }
 .empty-moves {
   display: flex;
@@ -1795,6 +1814,87 @@ main {
   font-size: 13.5px;
   line-height: 1.6;
 }
+.onboarding-card {
+  margin: 28px 20px;
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.onboarding-card h3 {
+  font-size: 16px;
+  color: var(--ink);
+}
+.onboarding-card p {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.onboarding-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.onboarding-actions .primary,
+.onboarding-actions .secondary {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+}
+.onboarding-actions .primary .piece-art,
+.onboarding-actions .secondary .piece-art {
+  width: 24px;
+  height: 24px;
+}
+.wrong-review-card {
+  margin: 16px;
+  padding: 16px;
+  background: #fbf3e8;
+  border: 1px solid #e8d4b8;
+  border-radius: 10px;
+}
+.wrong-review-card .eyebrow {
+  color: #b8860b;
+}
+.wrong-review-card p {
+  font-size: 13px;
+  color: #7a6a4a;
+  margin: 8px 0 12px;
+}
+.wrong-review-actions {
+  display: flex;
+  gap: 10px;
+}
+.wrong-review-actions .primary {
+  flex: 1;
+}
+.onboarding-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.onboarding-actions .primary,
+.onboarding-actions .secondary {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+}
+.onboarding-actions .primary .piece-art,
+.onboarding-actions .secondary .piece-art {
+  width: 24px;
+  height: 24px;
+}
 .learn-progress {
   min-width: 190px;
   text-align: right;
@@ -1827,6 +1927,24 @@ main {
   background: var(--green);
   border-radius: 3px;
   transition: width 0.3s;
+}
+.coach-why {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.4;
+  padding: 6px 8px;
+  background: #f5f4ed;
+  border-radius: 5px;
+}
+.report-deviation {
+  font-size: 12px;
+  color: #b8860b;
+  padding: 8px 12px;
+  background: #fbf3e8;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  border-left: 3px solid #d4a017;
 }
 .learn-toolbar {
   display: flex;
@@ -1976,6 +2094,30 @@ main {
   gap: 3px;
   font-size: 10px;
   color: var(--green);
+}
+.favorite-toggle {
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 50%;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+}
+.favorite-toggle:hover {
+  background: #e8eadf;
+}
+.opening-card.favorited {
+  border-color: #d4c4a8;
+  background: #faf7ef;
+}
+.opening-card.favorited .favorite-toggle {
+  color: #b8860b;
+}
+.favorite-button {
+  color: #b8860b;
+}
+.favorite-button:hover {
+  color: #8b6914;
 }
 .learn-empty {
   text-align: center;

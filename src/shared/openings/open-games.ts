@@ -940,4 +940,166 @@ export const OPEN_GAMES: OpeningSource[] = [
       },
     ],
   },
+  {
+    id: 'ponziani',
+    name: 'Ponziani Opening',
+    eco: 'C44',
+    side: 'w',
+    family: 'Open games',
+    summary:
+      'A third way after 3.Bc4 and 3.Nf6+: d4 on move three, grabbing the centre at once.',
+    goal: 'Play d4 while e5 is still strong, then develop with Bc4 and Nc3 and keep the centre.',
+    nextPlan: 'Next: Bc4, O-O and Nc3, with the e5 weakness on Black\'s side giving you room.',
+    remember: 'd4 early, Bc4 aimed at f7, then Nf3 and O-O.',
+    watch:
+      'One line: 3...Nf6 4.e5 is sharp and leaves Black without a safe knight square.',
+    steps: [
+      {
+        san: 'e4',
+        title: 'Take the centre',
+        why: 'The king pawn opens lines and claims the middle.',
+        replies: [{ san: 'e5', note: 'The Open Game.', answer: 'd4' }],
+      },
+      {
+        san: 'e5',
+        title: 'Black mirrors you',
+        why: 'Black claims the same central space.',
+      },
+      {
+        san: 'd4',
+        title: 'Strike immediately',
+        why: 'You open the centre on move three, grabbing space while Black is still undeveloped.',
+        replies: [
+          { san: 'exd4', note: 'The main line: accept the challenge.', answer: 'Qxd4' },
+          { san: 'd6', note: 'The Philidor, defending while keeping the centre.', answer: 'Nf3' },
+        ],
+      },
+      {
+        san: 'exd4',
+        title: 'Black takes',
+        why: 'The centre opens, so you get the queen out early and grab the open d-file.',
+      },
+      {
+        san: 'Qxd4',
+        title: 'Develop with tempo',
+        why: 'The queen recaptures and controls the centre at the same time, so you finish development faster.',
+        replies: [{ san: 'Nf6', note: 'Black develops and attacks the queen.', answer: 'Nc3' }],
+      },
+      {
+        san: 'Nf6',
+        title: 'Develop and hit e4',
+        why: 'The knight attacks e4 and the queen on d4 at once, so you must decide which to defend.',
+      },
+      {
+        san: 'Nc3',
+        title: 'Defend both',
+        why: 'The knight adds a second defender and frees f3 for the bishop, so you keep the initiative.',
+      },
+      {
+        san: 'Bc5',
+        title: 'Prepare to castle',
+        why: 'The bishop develops quickly and points at the kingside, so castling is only one move away.',
+      },
+      {
+        san: 'Bc4',
+        title: 'Aim at f7',
+        why: 'The bishop takes the strong diagonal and your king can castle next move.',
+      },
+      {
+        san: 'O-O',
+        title: 'Black castles',
+        why: 'Black\'s king is safe, so the race is on to see who develops faster.',
+      },
+      {
+        san: 'Nf3',
+        title: 'Complete the setup',
+        why: 'The last piece is out, so your king can castle on the next move and the middlegame starts.',
+      },
+    ],
+  },
+  {
+    id: 'scotch-gambit',
+    name: 'Scotch Gambit',
+    eco: 'C44',
+    side: 'w',
+    family: 'Open games',
+    summary:
+      'A sharper Scotch: give up the f-pawn for an open line and a fast attack on f7.',
+    goal: 'Play Bc4 quickly after d4, castle and use the open lines to build an attack.',
+    nextPlan: 'Next: O-O, Re1 and Ng5, keeping the initiative as long as the attack does.',
+    remember: 'd4, Bc4, O-O and Ng5: the Scotch Gambit plan.',
+    watch:
+      'Black can decline: after 3...d6 4.Bc4 looks very similar to the usual Scotch.',
+    steps: [
+      {
+        san: 'e4',
+        title: 'Take the centre',
+        why: 'The king pawn opens lines and claims the middle.',
+        replies: [{ san: 'e5', note: 'The Open Game.', answer: 'd4' }],
+      },
+      {
+        san: 'e5',
+        title: 'Black mirrors you',
+        why: 'Black claims the same central space.',
+      },
+      {
+        san: 'd4',
+        title: 'Strike immediately',
+        why: 'You open the centre and give up a pawn to get a faster development.',
+        replies: [{ san: 'exd4', note: 'The accepted gambit, by far the most common.', answer: 'c3' }],
+      },
+      {
+        san: 'exd4',
+        title: 'Black takes',
+        why: 'The centre opens, so you get the open line in return for a pawn.',
+      },
+      {
+        san: 'c3',
+        title: 'Offer the gambit pawn',
+        why: 'You challenge the d4 pawn again, so Black must decide whether to take again or defend.',
+        replies: [{ san: 'dxc3', note: 'Black takes again: the gambit is accepted.', answer: 'Bc4' }],
+      },
+      {
+        san: 'dxc3',
+        title: 'Black takes the second pawn',
+        why: 'Black accepts the gambit, so you get two pieces for the pawn and the open centre.',
+      },
+      {
+        san: 'Bc4',
+        title: 'Aim at f7',
+        why: 'The bishop points at f7, the weakest square, and your development is fast.',
+        replies: [{ san: 'Nf6', note: 'Black develops and attacks the bishop.', answer: 'Nf3' }],
+      },
+      {
+        san: 'Nf6',
+        title: 'Black develops',
+        why: 'The knight develops and hits e4, so you must defend your king\'s pawn.',
+      },
+      {
+        san: 'Nf3',
+        title: 'Develop and defend',
+        why: 'The knight defends e4 and clears g1 for castling, so your development is almost done.',
+      },
+      {
+        san: 'Be7',
+        title: 'Prepare to castle',
+        why: 'The bishop develops and frees the king\'s path, so castling is one move away.',
+      },
+      {
+        san: 'O-O',
+        title: 'Castle into the gambit',
+        why: 'Your king is safe and Re1 brings a second attacker to e5.',
+      },
+      {
+        san: 'O-O',
+        title: 'Black castles too',
+        why: 'Both kings are safe, so the middlegame is about the open centre.',
+      },
+      {
+        san: 'Nxc3',
+        title: 'Finish development',
+        why: 'The knight develops to c3, clearing f3, supporting the centre and attacking d5, so you are fully developed.',
+      },
+    ],
+  },
 ]

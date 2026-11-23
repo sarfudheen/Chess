@@ -1038,6 +1038,13 @@ export function App() {
                                     : ''}
                               </p>
                             )}
+                            {coach.step !== null && coach.opening.steps[coach.step]?.why && (
+                              <p className="coach-why">
+                                {coach.sideline
+                                  ? coach.sideline.reply.note
+                                  : coach.opening.steps[coach.step].why}
+                              </p>
+                            )}
                           </>
                         ) : coach.complete ? (
                           <p>
@@ -1108,6 +1115,11 @@ export function App() {
                                 {report.opening.eco}
                               </span>
                             </div>
+                            {report.leftAt !== null && (
+                              <p className="report-deviation">
+                                You left the book at move {Math.floor((report.leftAt ?? 0) / 2) + 1}.
+                              </p>
+                            )}
                             {report.inBook ? (
                               <p>
                                 You stayed in the book for {report.ply}{' '}
@@ -1202,7 +1214,7 @@ export function App() {
                               { length: Math.ceil(count / 2) },
                               (_, i) => (
                                 <div className="move-row" key={i}>
-                                  <span>{i + 1}.</span>
+                                  <span className="move-row-num">{i + 1}.</span>
                                   {[i * 2, i * 2 + 1].map((index) => (
                                     <button
                                       key={index}
@@ -1220,7 +1232,12 @@ export function App() {
                                         )
                                       }
                                     >
-                                      {current.moves[index] || ''}
+                                      <span className="move-san">
+                                        {current.moves[index] || ''}
+                                      </span>
+                                      <span className="move-side">
+                                        {index % 2 === 0 ? 'W' : 'B'}
+                                      </span>
                                     </button>
                                   ))}
                                 </div>
