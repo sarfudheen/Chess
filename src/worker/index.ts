@@ -24,6 +24,12 @@ import {
   createRealtimeTicket,
   publishRealtime,
 } from '../../freebuff-realtime/server.js'
+import {
+  emptyProgress,
+  mergeProgress,
+  sanitizeProgress,
+  type Progress,
+} from '../shared/openings/progress'
 
 type Env = {
   ASSETS: Fetcher
@@ -76,6 +82,9 @@ function initialize(db: D1Database) {
         ),
         db.prepare(
           'CREATE INDEX IF NOT EXISTS games_black_sub ON games(black_sub, status, created_at)',
+        ),
+        db.prepare(
+          'CREATE TABLE IF NOT EXISTS opening_progress (player_key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at INTEGER NOT NULL)',
         ),
       ])
       .catch((error) => {
@@ -142,10 +151,12 @@ function view(game: Game, player: Player, now: number) {
   return publicGame(game, actorFor(game, player), now)
 }
 const app = new Hono<Context>()
+// Lesson progress is a small map of step statistics; game actions stay tiny.
+const progressLimit = 131072
 app.use(
   '/api/*',
   bodyLimit({
-    maxSize: 4096,
+    maxSize: progressLimit,
     onError: (c) => c.json({ error: 'Request too large.' }, 413),
   }),
 )
@@ -163,7 +174,10 @@ app.use('/api/*', async (c, next) => {
     !c.req.header('content-type')?.startsWith('application/json')
   )
     return c.json({ error: 'Send JSON.' }, 415)
-  if (Number(c.req.header('content-length') ?? 0) > 4096)
+  if (
+    Number(c.req.header('content-length') ?? 0) >
+    (c.req.path === '/api/progress' ? progressLimit : 4096)
+  )
     return c.json({ error: 'Request too large.' }, 413)
   await initialize(c.env.DB)
   const token = getCookie(
@@ -228,6 +242,42 @@ app.post('/api/session', async (c) => {
     authEnabled: !!c.env.FREEBUFF_CLIENT_ID,
     realtime: !!c.env.REALTIME,
   })
+})
+function progressKey(player: Player) {
+  return player.sub ? `user:${player.sub}` : `guest:${player.id}`
+}
+function storedProgress(data: string | undefined): Progress {
+  if (!data) return emptyProgress()
+  try {
+    return sanitizeProgress(JSON.parse(data))
+  } catch {
+    return emptyProgress()
+  }
+}
+app.get('/api/progress', async (c) => {
+  const row = await c.env.DB.prepare(
+    'SELECT data FROM opening_progress WHERE player_key = ?',
+  )
+    .bind(progressKey(c.get('player')))
+    .first<{ data: string }>()
+  return c.json({ progress: storedProgress(row?.data) })
+})
+app.post('/api/progress', async (c) => {
+  const body = await c.req.json<{ progress?: unknown }>()
+  const incoming = sanitizeProgress(body.progress)
+  const key = progressKey(c.get('player'))
+  const row = await c.env.DB.prepare(
+    'SELECT data FROM opening_progress WHERE player_key = ?',
+  )
+    .bind(key)
+    .first<{ data: string }>()
+  const merged = mergeProgress(storedProgress(row?.data), incoming)
+  await c.env.DB.prepare(
+    'INSERT INTO opening_progress (player_key, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(player_key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at',
+  )
+    .bind(key, JSON.stringify(merged), Date.now())
+    .run()
+  return c.json({ progress: merged })
 })
 app.get('/api/games', async (c) => {
   const rows = await c.env.DB.prepare(

@@ -4,6 +4,7 @@ import {
   ArrowDownUp,
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   Check,
   ChevronFirst,
   ChevronLast,
@@ -28,14 +29,19 @@ import {
   X,
 } from 'lucide-react'
 import { Board } from './Board'
+import { Openings, type LessonTarget } from './Openings'
 import { Piece } from './Piece'
+import { OPENINGS } from '../shared/openings'
+import { identifyOpening } from '../shared/openings/book'
 import {
   CONTROLS,
+  chessFor,
   finish,
   moveGame,
   newGame,
   publicGame,
   remaining,
+  seatFor,
   settleClock,
   type Game,
   type PublicGame,
@@ -121,6 +127,9 @@ function PlayerBar({
   )
 }
 const blank = new Chess()
+const isLearnLink = () =>
+  location.hash === '#/openings' || location.hash.startsWith('#/openings/')
+
 export function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [game, setGame] = useState<PublicGame | null>(null)
@@ -132,7 +141,11 @@ export function App() {
     wins: number
     draws: number
   } | null>(null)
-  const [panel, setPanel] = useState<'play' | 'history'>('play')
+  const [panel, setPanel] = useState<'play' | 'history' | 'openings'>(() =>
+    isLearnLink() ? 'openings' : 'play',
+  )
+  const [lessonId, setLessonId] = useState<string | null>(null)
+  const [lessonTarget, setLessonTarget] = useState<LessonTarget | null>(null)
   const [control, setControl] = useState(2)
   const [color, setColor] = useState<'w' | 'b' | 'random'>('random')
   const [flipped, setFlipped] = useState(false)
@@ -160,6 +173,28 @@ export function App() {
     waiting = current?.status === 'waiting'
   const orientation: Color = (current?.seat === 'b') !== flipped ? 'b' : 'w'
   const turn = (current?.fen.split(' ')[1] || 'w') as Color
+  /** The lesson line a practice game is following, if any. */
+  const lessonOpening = useMemo(
+    () => (lessonId ? OPENINGS.find((entry) => entry.id === lessonId) ?? null : null),
+    [lessonId],
+  )
+  const coach = useMemo(() => {
+    if (!practice || practice.status !== 'playing') return null
+    const match = practice.pgn
+      ? identifyOpening(practice.pgn, seatFor(practice, 'practice-you') ?? 'w', lessonId)
+      : null
+    if (match) return match
+    if (!lessonOpening) return null
+    // Before the first move, or after a first move outside every lesson, the
+    // chosen lesson is still the plan the player asked to practise.
+    return {
+      opening: lessonOpening,
+      ply: 0,
+      inBook: practice.moves.length === 0,
+      expectedSan: lessonOpening.moves[0] ?? null,
+      leftAt: practice.moves.length ? 0 : null,
+    }
+  }, [practice?.pgn, practice?.status, lessonId, lessonOpening])
   const visible = useMemo(() => {
     const chess = new Chess()
     if (current?.pgn) chess.loadPgn(current.pgn)
@@ -187,6 +222,13 @@ export function App() {
     },
     [accept],
   )
+  useEffect(() => {
+    const sync = () => {
+      if (isLearnLink()) setPanel('openings')
+    }
+    window.addEventListener('hashchange', sync)
+    return () => window.removeEventListener('hashchange', sync)
+  }, [])
   useEffect(() => {
     let live = true
     api<Session>('/session', {})
@@ -289,33 +331,52 @@ export function App() {
     refresh,
   ])
   useEffect(() => {
-    if (!practice || practice.status !== 'playing' || turn !== 'b') return
+    if (!practice || practice.status !== 'playing') return
+    const seat = seatFor(practice, 'practice-you')
+    if (!seat || turn === seat) return
+    const snapshot = practice
+    const apply = (from: string, to: string, promotion?: string) =>
+      setPractice((previous) =>
+        previous?.revision === snapshot.revision
+          ? {
+              ...moveGame(
+                previous,
+                'practice-computer',
+                from,
+                to,
+                promotion,
+                Date.now(),
+              ),
+              revision: previous.revision + 1,
+            }
+          : previous,
+      )
+    // While the game is inside a lesson, the house plays the book: the line
+    // stays on the rails until the learner leaves it.
+    let book: { from: string; to: string; promotion?: string } | null = null
+    if (coach?.inBook && coach.expectedSan) {
+      const replay = chessFor(snapshot)
+      try {
+        const move = replay.move(coach.expectedSan)
+        book = { from: move.from, to: move.to, promotion: move.promotion }
+      } catch {
+        book = null
+      }
+    }
+    if (book) {
+      const timer = setTimeout(() => apply(book!.from, book!.to, book!.promotion), 420)
+      return () => clearTimeout(timer)
+    }
     const worker = new Worker(new URL('./computer.ts', import.meta.url), {
       type: 'module',
     })
-    const snapshot = practice
     worker.onmessage = ({
       data,
     }: MessageEvent<{ move: string; revision: number }>) => {
       const chess = new Chess()
       if (snapshot.pgn) chess.loadPgn(snapshot.pgn)
       const move = chess.move(data.move)
-      if (move)
-        setPractice((previous) =>
-          previous?.revision === data.revision
-            ? {
-                ...moveGame(
-                  previous,
-                  'practice-computer',
-                  move.from,
-                  move.to,
-                  move.promotion,
-                  Date.now(),
-                ),
-                revision: previous.revision + 1,
-              }
-            : previous,
-        )
+      if (move) apply(move.from, move.to, move.promotion)
     }
     const timer = setTimeout(
       () =>
@@ -326,7 +387,13 @@ export function App() {
       clearTimeout(timer)
       worker.terminate()
     }
-  }, [practice?.revision, practice?.status, turn])
+  }, [
+    practice?.revision,
+    practice?.status,
+    turn,
+    coach?.inBook,
+    coach?.expectedSan,
+  ])
   useEffect(() => {
     if (!current?.moves.length || !sound) return
     try {
@@ -467,17 +534,20 @@ export function App() {
       }
     } else void action('move', { from, to, promotion })
   }
-  const startPractice = () => {
+  const startPractice = (side: 'w' | 'b' = 'w', lesson: string | null = null) => {
     const game = newGame(
       { id: 'practice-you', name: session?.name || 'You', sub: null },
-      { ...CONTROLS[control], public: false, color: 'w' },
+      { ...CONTROLS[control], public: false, color: side },
       now,
     )
+    const house = { id: 'practice-computer', name: 'The house', sub: null }
     setPractice({
       ...game,
-      black: { id: 'practice-computer', name: 'The house', sub: null },
+      white: side === 'w' ? game.white : house,
+      black: side === 'b' ? game.black : house,
       status: 'playing',
     })
+    setLessonId(lesson)
     setReview(null)
     setFlipped(false)
     setGame(null)
@@ -486,9 +556,15 @@ export function App() {
     window.scrollTo({ top: 0 })
     history.replaceState(null, '', location.pathname)
   }
+  const startLesson = (id: string) => {
+    const opening = OPENINGS.find((entry) => entry.id === id)
+    if (!opening) return
+    startPractice(opening.side, id)
+  }
   const home = () => {
     setGame(null)
     setPractice(null)
+    setLessonId(null)
     gameId.current = null
     setPanel('play')
     setReview(null)
@@ -526,7 +602,7 @@ export function App() {
         : ''
   return (
     <div
-      className={`app theme-${theme} ${!current || waiting || panel === 'history' ? 'setup' : 'in-game'}`}
+      className={`app theme-${theme} ${!current || waiting || panel !== 'play' ? 'setup' : 'in-game'}`}
     >
       <aside className="sidebar">
         <a
@@ -560,6 +636,13 @@ export function App() {
             <History size={19} />
             Your games
           </button>
+          <button
+            className={panel === 'openings' ? 'nav-item selected' : 'nav-item'}
+            onClick={() => setPanel('openings')}
+          >
+            <BookOpen size={19} />
+            Openings
+          </button>
         </nav>
         <div className="sidebar-bottom">
           <button className="nav-item" onClick={() => setConfirm('help')}>
@@ -590,11 +673,22 @@ export function App() {
       <main>
         <header className="page-header">
           <div>
-            <h1>{panel === 'history' ? 'Your games' : 'Play chess'}</h1>
+            <h1>
+              {panel === 'history'
+                ? 'Your games'
+                : panel === 'openings'
+                  ? 'Learn openings'
+                  : 'Play chess'}
+            </h1>
           </div>
           <div className="header-actions">
             <span className="quiet-badge">
-              <i /> {practice ? 'Practice' : 'Casual chess'}
+              <i />{' '}
+              {panel === 'openings'
+                ? 'Study'
+                : practice
+                  ? 'Practice'
+                  : 'Casual chess'}
             </span>
             <button
               className="icon-button"
@@ -618,6 +712,14 @@ export function App() {
             </button>
           </div>
         )}
+        {panel === 'openings' ? (
+          <Openings
+            onPlay={() => setPanel('play')}
+            onPractice={startLesson}
+            target={lessonTarget}
+            onTargetConsumed={() => setLessonTarget(null)}
+          />
+        ) : (
         <div className="game-layout">
           <section className="board-column" aria-label="Game">
             <PlayerBar
@@ -879,6 +981,48 @@ export function App() {
                           : 'Spectating'}
                       </span>
                     </div>
+                    {practice && coach && (
+                      <div
+                        className={`coach-card${coach.inBook ? '' : ' out-of-book'}`}
+                      >
+                        <span className="eyebrow">Opening coach</span>
+                        <div className="coach-title">
+                          <strong>{coach.opening.name}</strong>
+                          <span className="eco-badge">{coach.opening.eco}</span>
+                        </div>
+                        {coach.inBook ? (
+                          <>
+                            <p>{coach.opening.goal}</p>
+                            {coach.expectedSan && (
+                              <p className="coach-next">
+                                Book move: <strong>{coach.expectedSan}</strong>{' '}
+                                {coach.opening.steps[coach.ply]?.title}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <p>
+                            You left the book at move{' '}
+                            {Math.ceil((coach.leftAt ?? 0) / 2)}. The line was{' '}
+                            <strong>{coach.expectedSan}</strong>.{' '}
+                            {coach.opening.nextPlan}
+                          </p>
+                        )}
+                        <button
+                          className="text-button"
+                          onClick={() => {
+                            setLessonTarget({
+                              id: coach.opening.id,
+                              ply: coach.ply,
+                              nonce: Date.now(),
+                            })
+                            setPanel('openings')
+                          }}
+                        >
+                          Open the lesson <ArrowRight size={13} />
+                        </button>
+                      </div>
+                    )}
                     {current.status === 'finished' && (
                       <div className="result-card">
                         <Trophy size={25} strokeWidth={1.5} />
@@ -891,7 +1035,7 @@ export function App() {
                         <strong>{current.result}</strong>
                         <button
                           className="primary"
-                          onClick={practice ? startPractice : home}
+                          onClick={() => (practice ? startPractice() : home())}
                         >
                           Play again <RotateCcw size={16} />
                         </button>
@@ -1126,7 +1270,7 @@ export function App() {
                   </button>
                   <button
                     className="text-button practice-button"
-                    onClick={startPractice}
+                    onClick={() => startPractice()}
                   >
                     Practice with the computer <ArrowRight size={14} />
                   </button>
@@ -1183,6 +1327,7 @@ export function App() {
             )}
           </aside>
         </div>
+        )}
       </main>
       {(joinOpen || confirm) && (
         <div
